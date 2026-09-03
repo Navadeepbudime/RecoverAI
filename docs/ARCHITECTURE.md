@@ -1,58 +1,70 @@
-# Architecture
+# RecoverAI Architecture
 
-RecoverAI is split into a Flask backend and a React frontend.
+RecoverAI is an Autonomous Revenue Recovery Orchestrator built with a modular Python/Flask backend and a React (Vite + Tailwind) frontend.
 
-## Payment Provider Abstraction
+---
 
-The application is designed around a **provider-agnostic payment interface**:
+## 1. Dual Abstraction Architecture
 
+The application is architected around two core abstraction boundaries:
+
+### A. Payment Provider Abstraction
 ```
 PaymentProvider (abstract base)
-    ├── DemoPaymentProvider  (default — no API keys)
-    └── RazorpayProvider     (future — requires credentials)
+    ├── DemoPaymentProvider  (default — zero API keys required)
+    └── RazorpayProvider     (optional — activated via PAYMENT_PROVIDER=razorpay)
+```
+- **Demo Mode Default**: The entire payment lifecycle (`payment.failed`, `payment.captured`, `payment.expired`, `payment.retry`) is simulated locally with deterministic repeatability.
+
+### B. AI Reasoning Provider Abstraction
+```
+RecoveryAgent
+    ├── DemoAIProvider          (default — rule-backed, zero API keys required)
+    └── GeminiRecoveryProvider  (active when GEMINI_API_KEY is configured)
+```
+- **Fault Tolerance**: If Gemini encounters network failure or quota exhaustion, it **gracefully falls back** to `DemoAIProvider` in < 2ms, guaranteeing zero presentation downtime.
+
+---
+
+## 2. Core Service Architecture
+
+```
+[Payment Event Ingested]
+          ↓
+[Customer Recovery Memory] (`services/recovery_memory.py`)
+          ↓
+[Deterministic Scoring Engine] (`services/scoring.py`)
+          ↓
+[AI Recovery Agent] (`agents/recovery_agent.py`)
+          ↓
+[Pydantic Schema Validation] (`agents/schemas.py`)
+          ↓
+[Deterministic Merchant Policy Engine] (`policies/engine.py`)
+          ↓
+[Action Executor & Provider] (`services/action_executor.py`)
+          ↓
+[Immutable Audit Logger] (`services/audit.py`)
+          ↓
+[Evaluation & ROI Engine] (`services/evaluation.py`)
 ```
 
-The default provider is `demo`, configured via `PAYMENT_PROVIDER=demo`.
+- `services/recovery_memory.py`: Summarizes past customer intervention outcomes into natural language memory.
+- `services/scoring.py`: Calculates transparent factor-weighted risk scores and recovery probabilities.
+- `policies/engine.py`: Hard merchant guardrails (max retries, repeated failure limits, escalation thresholds) that the AI cannot bypass.
+- `services/action_executor.py`: Safe execution of approved actions through the payment provider.
+- `services/live_simulator.py`: Ingests on-demand synthetic failure events streaming through the 5-stage pipeline.
+- `services/evaluation.py`: Computes comparative **Baseline Naive Retry vs. RecoverAI** revenue and incremental lift.
+- `services/simulator.py`: Allows merchants to simulate the financial impact of policy parameter shifts.
 
-The DemoPaymentProvider simulates the entire payment lifecycle:
-- `payment.failed` (bank timeout, insufficient funds, card expired, etc.)
-- `payment.captured` (successful recovery)
-- `payment.expired` (payment link expired)
-- `payment.cancelled` (customer cancelled)
-- `payment.retry` (retry attempt result)
+---
 
-**No external API keys are required to run the application.**
-
-## Backend
-
-- `providers/`: Payment provider abstraction and implementations.
-- `models/`: SQLAlchemy entities for customers, payments, recovery cases, merchant policy, and audit logs.
-- `services/scoring.py`: Transparent rule-based scoring system.
-- `agents/recovery_agent.py`: AI recommendation boundary and structured validation.
-- `policies/engine.py`: Deterministic guardrails.
-- `services/action_executor.py`: Executes allowed actions through the configured payment provider.
-- `routes/api.py`: REST API. Razorpay webhook only processes when `PAYMENT_PROVIDER=razorpay`.
-
-## Data Flow
-
-1. A payment failure or abandonment is stored as a `Payment`.
-2. A `RecoveryCase` is created.
-3. Scoring evaluates recoverability from customer and transaction context.
-4. The AI agent emits structured JSON-compatible data.
-5. Policy validation may allow, override, stop, or escalate the recommendation.
-6. The executor delegates the action to the configured `PaymentProvider`.
-7. Audit entries explain every significant step.
-
-## Demo Persistence
-
-SQLite is the default so the app can run without PostgreSQL. The same SQLAlchemy models work with PostgreSQL by setting `DATABASE_URL`.
-
-## Configuration
+## 3. Configuration
 
 | Variable | Default | Description |
 |---|---|---|
-| `PAYMENT_PROVIDER` | `demo` | Payment provider to use |
-| `DEMO_MODE` | `true` | Enable demo mode indicators |
-| `DATABASE_URL` | `sqlite:///recoverai_demo.db` | Database connection |
-| `GEMINI_API_KEY` | (empty) | Optional — AI agent uses rules without it |
-| `RAZORPAY_KEY_ID` | (empty) | Only needed when `PAYMENT_PROVIDER=razorpay` |
+| `PAYMENT_PROVIDER` | `demo` | Payment provider (`demo` or `razorpay`) |
+| `DEMO_MODE` | `true` | Display demo mode indicators in UI |
+| `DATABASE_URL` | `sqlite:///recoverai_demo.db` | Database connection (SQLite or PostgreSQL) |
+| `GEMINI_API_KEY` | (empty) | Optional — enables real Gemini 1.5 Flash AI reasoning |
+| `GEMINI_MODEL` | `gemini-1.5-flash` | Gemini model identifier |
+| `RAZORPAY_KEY_ID` | (empty) | Optional — only needed when `PAYMENT_PROVIDER=razorpay` |

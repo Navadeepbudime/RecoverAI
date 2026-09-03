@@ -1,7 +1,11 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from ..extensions import db
 from ..domain import CaseStatus
+
+
+def utc_now():
+    return datetime.now(timezone.utc)
 
 
 class Customer(db.Model):
@@ -14,7 +18,7 @@ class Customer(db.Model):
     successful_payments = db.Column(db.Integer, default=0)
     failed_payments = db.Column(db.Integer, default=0)
     previous_recoveries = db.Column(db.Integer, default=0)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=utc_now)
 
     payments = db.relationship("Payment", backref="customer", lazy=True)
 
@@ -41,7 +45,7 @@ class MerchantPolicy(db.Model):
     escalation_threshold_paise = db.Column(db.Integer, default=5_000_000)
     repeated_failure_limit = db.Column(db.Integer, default=3)
     auto_retry_enabled = db.Column(db.Boolean, default=True)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=utc_now, onupdate=utc_now)
 
     def to_dict(self):
         return {
@@ -66,7 +70,7 @@ class Payment(db.Model):
     payment_method = db.Column(db.String(40), default="card")
     retry_count = db.Column(db.Integer, default=0)
     checkout_abandoned = db.Column(db.Boolean, default=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=utc_now)
     recovered_at = db.Column(db.DateTime)
 
     case = db.relationship("RecoveryCase", backref="payment", uselist=False)
@@ -101,8 +105,8 @@ class RecoveryCase(db.Model):
     policy_reason = db.Column(db.Text)
     executed_action = db.Column(db.String(80))
     outcome = db.Column(db.String(80))
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=utc_now)
+    updated_at = db.Column(db.DateTime, default=utc_now, onupdate=utc_now)
 
     audits = db.relationship("AuditLog", backref="case", lazy=True, cascade="all,delete")
 
@@ -142,7 +146,7 @@ class AuditLog(db.Model):
     executed_action = db.Column(db.String(80))
     result = db.Column(db.String(80))
     reason = db.Column(db.Text)
-    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    timestamp = db.Column(db.DateTime, default=utc_now)
 
     def to_dict(self):
         return {

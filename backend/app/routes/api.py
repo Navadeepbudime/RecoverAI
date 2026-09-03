@@ -1,13 +1,17 @@
+from datetime import datetime, timezone
 from flask import Blueprint, current_app, jsonify, request
 
-from ..agents.recovery_agent import RecoveryAgent
+from ..agents.recovery_agent import RecoveryAgent, get_configured_ai_provider
 from ..extensions import db
-from ..models import AuditLog, Customer, MerchantPolicy, Payment, RecoveryCase
+from ..models import AuditLog, CaseStatus, Customer, MerchantPolicy, Payment, RecoveryCase
 from ..policies.engine import PolicyEngine
 from ..providers import get_payment_provider
 from ..services.action_executor import ActionExecutor
 from ..services.analytics import action_breakdown, dashboard_metrics, failure_breakdown
 from ..services.audit import AuditLogger
+from ..services.evaluation import calculate_evaluation_metrics
+from ..services.live_simulator import trigger_live_simulation, SCENARIO_TEMPLATES
+from ..services.recovery_memory import CustomerRecoveryMemory
 from ..services.scoring import score_recovery
 from ..services.simulator import simulate_policy
 from ..utils.razorpay import verify_webhook_signature
@@ -17,7 +21,7 @@ api_bp = Blueprint("api", __name__)
 
 def _provider():
     """Return the payment provider configured for this app."""
-    return get_payment_provider(current_app.config["PAYMENT_PROVIDER"])
+    return get_payment_provider(current_app.config.get("PAYMENT_PROVIDER", "demo"))
 
 
 def get_policy():
@@ -29,31 +33,52 @@ def get_policy():
     return policy
 
 
-def process_case(case):
+def process_case(case, force: bool = False):
+    """Processes a recovery case through the complete RecoverAI pipeline."""
+    # Cooldown & idempotency protection: if recently resolved/stopped, prevent accidental double-processing
+    if not force and case.outcome and case.updated_at:
+        now_utc = datetime.now(timezone.utc)
+        case_time = case.updated_at
+        if case_time.tzinfo is None:
+            case_time = case_time.replace(tzinfo=timezone.utc)
+        elapsed = (now_utc - case_time).total_seconds()
+        if elapsed < 120 and case.status in {CaseStatus.RECOVERED.value, CaseStatus.STOPPED.value}:
+            return case
+
     provider = _provider()
     policy = get_policy()
     logger = AuditLogger()
 
-    # 1. Context analysis
+    # 1. Customer recovery memory & context analysis
+    memory = CustomerRecoveryMemory.get_memory(case.payment.customer, current_payment_id=case.payment.id)
     score = score_recovery(case.payment, case.payment.customer)
-    logger.log(case, "CONTEXT_ANALYZED", "Customer and payment context analyzed for revenue risk.")
+    logger.log(case, "CONTEXT_ANALYZED", f"Customer context analyzed. {memory.summary_text}")
 
-    # 2. AI recommendation
-    recommendation = RecoveryAgent().recommend(case.payment, case.payment.customer, score, policy)
+    # 2. AI recommendation (uses Gemini if configured, otherwise Demo provider)
+    ai_provider = get_configured_ai_provider(current_app.config if current_app else None)
+    agent = RecoveryAgent(provider=ai_provider)
+    recommendation = agent.recommend(case.payment, case.payment.customer, score, policy, memory)
+
     case.risk_score = recommendation.risk_score
     case.recovery_probability = recommendation.recovery_probability
-    case.recommended_action = recommendation.recommended_action
+    case.recommended_action = recommendation.recommended_action.value
     case.priority = recommendation.priority
     case.ai_explanation = recommendation.reason
     logger.log(case, "AI_DECISION", recommendation.reason, ai_recommendation=recommendation.to_dict())
 
-    # 3. Policy validation
+    # 3. Deterministic policy guardrails
     decision = PolicyEngine().validate(case.payment, case.payment.customer, recommendation, policy)
     case.policy_decision = "ALLOWED" if decision.allowed else "OVERRIDDEN"
     case.policy_reason = decision.reason
-    logger.log(case, "POLICY_CHECK", decision.reason, ai_recommendation=recommendation.to_dict(), policy_result=decision.to_dict())
+    logger.log(
+        case,
+        "POLICY_CHECK",
+        decision.reason,
+        ai_recommendation=recommendation.to_dict(),
+        policy_result=decision.to_dict(),
+    )
 
-    # 4. Action execution via payment provider
+    # 4. Action execution
     result = ActionExecutor(provider).execute(case, decision.final_action)
     logger.log(
         case,
@@ -69,19 +94,22 @@ def process_case(case):
 
 
 # ---------------------------------------------------------------------------
-# Health
+# Health & Status
 # ---------------------------------------------------------------------------
 
 
 @api_bp.get("/health")
 def health():
     provider = _provider()
+    gemini_key = current_app.config.get("GEMINI_API_KEY")
+    ai_status = "gemini-active" if (gemini_key and str(gemini_key).strip()) else "demo-rule-agent"
     return jsonify(
         {
             "status": "ok",
             "demo_mode": not provider.is_live,
             "payment_provider": provider.name,
-            "ai_provider": "demo-rule-agent" if not current_app.config.get("GEMINI_API_KEY") else "gemini-configured",
+            "ai_provider": ai_status,
+            "gemini_configured": bool(gemini_key and str(gemini_key).strip()),
             "razorpay": "configured" if current_app.config.get("RAZORPAY_KEY_ID") else "not-configured",
         }
     )
@@ -99,20 +127,44 @@ def metrics():
 
 @api_bp.get("/analytics")
 def analytics():
-    return jsonify({"actions": action_breakdown(), "failures": failure_breakdown()})
+    return jsonify({
+        "actions": action_breakdown(),
+        "failures": failure_breakdown(),
+        "evaluation": calculate_evaluation_metrics(),
+    })
+
+
+@api_bp.get("/evaluation")
+def evaluation():
+    """Returns the comparative Baseline Naive Retry vs. RecoverAI evaluation."""
+    return jsonify(calculate_evaluation_metrics())
 
 
 # ---------------------------------------------------------------------------
-# Recovery Cases
+# Recovery Cases (with Filtering & Search)
 # ---------------------------------------------------------------------------
 
 
 @api_bp.get("/cases")
 def cases():
     status = request.args.get("status")
-    query = RecoveryCase.query
-    if status:
-        query = query.filter_by(status=status.upper())
+    search = request.args.get("search", "").strip().lower()
+
+    query = RecoveryCase.query.join(Payment).join(Customer)
+    if status and status.upper() not in {"ALL", ""}:
+        query = query.filter(RecoveryCase.status == status.upper())
+
+    if search:
+        query = query.filter(
+            db.or_(
+                RecoveryCase.case_id.ilike(f"%{search}%"),
+                Payment.external_id.ilike(f"%{search}%"),
+                Customer.name.ilike(f"%{search}%"),
+                Customer.email.ilike(f"%{search}%"),
+                Payment.failure_reason.ilike(f"%{search}%"),
+            )
+        )
+
     return jsonify([case.to_dict() for case in query.order_by(RecoveryCase.updated_at.desc()).all()])
 
 
@@ -125,7 +177,30 @@ def case_detail(case_id):
 @api_bp.post("/cases/<case_id>/process")
 def process_case_endpoint(case_id):
     case = RecoveryCase.query.filter_by(case_id=case_id).first_or_404()
-    return jsonify(process_case(case).to_dict(include_detail=True))
+    return jsonify(process_case(case, force=True).to_dict(include_detail=True))
+
+
+# ---------------------------------------------------------------------------
+# Live Simulation Trigger
+# ---------------------------------------------------------------------------
+
+
+@api_bp.post("/simulate-live")
+def simulate_live():
+    """Trigger on-demand live failure event and trace execution through agent."""
+    payload = request.get_json(force=True) or {}
+    scenario = payload.get("scenario", "BANK_TIMEOUT")
+    result = trigger_live_simulation(scenario, current_app.config)
+    return jsonify(result)
+
+
+@api_bp.get("/simulate-live/scenarios")
+def list_scenarios():
+    """List available templates for live simulation."""
+    return jsonify([
+        {"key": k, "label": v["label"], "amount": v["amount_paise"] / 100, "reason": v["failure_reason"]}
+        for k, v in SCENARIO_TEMPLATES.items()
+    ])
 
 
 # ---------------------------------------------------------------------------
@@ -135,12 +210,16 @@ def process_case_endpoint(case_id):
 
 @api_bp.get("/audit")
 def audit():
-    entries = AuditLog.query.order_by(AuditLog.timestamp.desc()).limit(200).all()
+    event_filter = request.args.get("event")
+    query = AuditLog.query
+    if event_filter and event_filter.upper() != "ALL":
+        query = query.filter(AuditLog.event == event_filter.upper())
+    entries = query.order_by(AuditLog.timestamp.desc()).limit(200).all()
     return jsonify([entry.to_dict() for entry in entries])
 
 
 # ---------------------------------------------------------------------------
-# Policy
+# Policy & Policy Simulator
 # ---------------------------------------------------------------------------
 
 
@@ -169,29 +248,18 @@ def update_policy():
     return jsonify(pol.to_dict())
 
 
-# ---------------------------------------------------------------------------
-# Simulator
-# ---------------------------------------------------------------------------
-
-
 @api_bp.post("/simulate")
 def simulate():
     return jsonify(simulate_policy(request.get_json(force=True)))
 
 
 # ---------------------------------------------------------------------------
-# Razorpay Webhook (only functional when PAYMENT_PROVIDER=razorpay)
+# Razorpay Webhook
 # ---------------------------------------------------------------------------
 
 
 @api_bp.post("/webhooks/razorpay")
 def razorpay_webhook():
-    """Accept Razorpay webhook events.
-
-    This endpoint is always registered so the URL doesn't 404, but it
-    only processes events when the payment provider is set to 'razorpay'
-    and credentials are configured.
-    """
     provider_name = current_app.config.get("PAYMENT_PROVIDER", "demo")
     if provider_name != "razorpay":
         return jsonify({"received": True, "note": "Razorpay provider not active — event acknowledged but not processed."}), 200
@@ -227,7 +295,6 @@ def razorpay_webhook():
         db.session.add(payment)
         db.session.flush()
 
-    # Prevent duplicate cases for the same payment
     if payment.status == "failed" and not RecoveryCase.query.filter_by(payment_id=payment.id).first():
         case = RecoveryCase(case_id=f"CASE-{payment.external_id}", payment=payment)
         db.session.add(case)

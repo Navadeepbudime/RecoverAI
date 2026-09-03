@@ -1,71 +1,78 @@
-# Demo
+# RecoverAI Live Demo Guide
+**Razorpay AI Buildathon — 5-Minute Pitch Walkthrough**
 
-Demo mode lets RecoverAI run **without any external API keys** — no Razorpay, no Gemini credentials needed.
+RecoverAI runs 100% locally in demo mode without any external API keys required.
 
-## How It Works
+---
 
-The application uses a **provider-agnostic payment interface**:
+## 1. Quick Start
 
-```
-PAYMENT_PROVIDER=demo  (default)
-```
-
-The `DemoPaymentProvider` simulates the entire payment lifecycle:
-
-| Event | Description |
-|---|---|
-| `payment.failed` | Bank timeout, insufficient funds, card expired, etc. |
-| `payment.captured` | Payment successfully recovered |
-| `payment.expired` | Payment link timed out |
-| `payment.cancelled` | Customer cancelled the payment |
-| `payment.retry` | Retry attempt with deterministic outcome |
-
-## Seed Data
-
-Run:
-
-```bash
+### Terminal 1: Backend
+```powershell
 cd backend
+.venv\Scripts\activate
 python seed.py
+python run.py
 ```
 
-The seed creates **18 customers** and **35 payments** covering:
+### Terminal 2: Frontend
+```powershell
+cd frontend
+npm run dev
+```
 
-- Bank timeout (temporary, recoverable)
-- Network error (temporary, recoverable)
-- Insufficient funds
-- Card expired
-- Authentication failure
-- Checkout abandonment
-- Repeated failures (chronic issue)
-- Payment expired
-- Customer cancelled
-- Successful recovery (already recovered)
-- High-value transactions (triggers escalation)
-- Low-value easy recovery
+Open **http://localhost:5173** in your browser.
 
-## Demo Behavior
+*(Alternatively, run `.\start-demo.ps1` from the project root).*
 
-The demo agent is **deterministic**. It uses the same structured recommendation schema and policy guardrails that a real LLM-backed agent or Razorpay-integrated system would use.
+---
 
-All demo actions are clearly labelled with `[DEMO]` prefixes in their results.
+## 2. 5-Minute Pitch Demo Script
 
-The UI shows **DEMO MODE** in the header when using the demo provider.
+### Minute 0:00 – 1:00: The Problem & The Hero Metric
+- Open **Dashboard**.
+- Point to the **Primary Recovery Metric** hero card:
+  - **₹54,089** recovered revenue.
+  - Highlight the **+972.5% vs. Naive Retry** lift badge.
+  - Explain: *"Standard retry systems blindly resubmit cards and fail on 100% of expired cards, abandonments, and insufficient funds. RecoverAI orchestrates the Next Best Action."*
 
-## Suggested Walkthrough
+### Minute 1:00 – 2:15: Live Pipeline Demonstration (⚡ Live Failure)
+- In the **Live Pipeline Demonstration** bar on the Dashboard, click:
+  - **"⚡ Insufficient Funds (₹24,999)"**
+- Watch the live 5-stage pipeline modal process in real time:
+  1. **Event Ingestion**: Captures the failed transaction.
+  2. **Context & Memory**: Evaluates customer LTV and past recovery memory.
+  3. **AI Recommendation**: Next-best action is synthesized (`SEND_PAYMENT_LINK`).
+  4. **Policy Guardrail**: PolicyEngine verifies the action complies with merchant rules.
+  5. **Action Execution**: Payment link is generated and outcome recorded.
+- Click **"Inspect Full Case Details"** to view the contextual explanation and audit trail.
 
-1. Open **Dashboard** and review at-risk revenue (₹2.84L at risk, ₹54K recovered).
-2. Open **Recovery Queue** and scan the 31 cases across all scenarios.
-3. Click a case to see the full timeline: `CONTEXT_ANALYZED → AI_DECISION → POLICY_CHECK → ACTION_EXECUTED`.
-4. Open **Recovery Policy** and edit guardrails (e.g., change max retries to 3).
-5. Open **Simulator** and compare expected recovery under different policies.
-6. Open **Audit Trail** to verify the chain of decisions and explanations.
-7. Open **Analytics** to see action and failure type distributions.
+### Minute 2:15 – 3:15: Baseline vs. RecoverAI ROI
+- Scroll to the **Baseline Retry vs. RecoverAI** evaluation card.
+- Show the empirical comparison:
+  - **Naive Retry**: ₹20,554 (11.9% recovery rate).
+  - **RecoverAI**: ₹2,20,442 (58.5% recovery rate).
+  - **Net Merchant Advantage**: **+₹1,99,888 Incremental Recovery**.
+- Open the **Analytics** tab to show the bar chart comparing recovery by failure type.
 
-## Transitioning to Live Mode
+### Minute 3:15 – 4:15: Merchant Policy & What-If Simulator
+- Open **Recovery Policy** tab:
+  - Show how merchants configure guardrails (Max Retries, High-Value Threshold, Escalation Threshold).
+- Open **Simulator** tab:
+  - Click the **"Strict Guardrails"** preset vs. **"Maximize Recovery"** preset.
+  - Click **Run Simulation**: show how the before-and-after comparison recomputes expected recovery against live synthetic data.
 
-To switch from demo to Razorpay:
+### Minute 4:15 – 5:00: Auditability & Security Summary
+- Open **Audit Trail** tab.
+- Demonstrate that every single AI recommendation, policy verdict, and execution outcome is immutably logged with timestamps.
+- Highlight: The LLM is strictly advisory; deterministic software executes only approved actions.
 
-1. Set `PAYMENT_PROVIDER=razorpay` in `.env`.
-2. Provide `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, and optionally `RAZORPAY_WEBHOOK_SECRET`.
-3. The core AI/recovery logic remains unchanged — only the payment execution layer changes.
+---
+
+## 3. Real AI Mode (Optional)
+
+To enable live Google Gemini 1.5 Flash reasoning:
+1. Add `GEMINI_API_KEY=your-key` in `.env`.
+2. Restart the backend.
+3. The header badge switches from `AI: demo-rule-agent` to `AI: gemini-active`.
+4. If the key is invalid or network drops, it **automatically falls back to DemoAIProvider** with zero downtime.

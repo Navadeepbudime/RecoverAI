@@ -236,3 +236,61 @@ API endpoints that accept form inputs from numeric text fields must always antic
 
 ### Technical Evidence
 Files: `backend/app/services/simulator.py`, `frontend/src/pages/Simulator.jsx`, `backend/tests/test_simulator.py`. Tests: 18 passed in `pytest`.
+
+## Problem 9: datetime.utcnow deprecation warnings in SQLAlchemy entities
+
+### Problem
+When running pytest in Python 3.14 with SQLAlchemy 2.0, 14 deprecation warnings were raised across all test suites: `DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC)`.
+
+### Context
+Occurred when adding unit tests for the AI agent and evaluation framework in `backend/tests/`.
+
+### Root Cause
+SQLAlchemy column default attributes in `backend/app/models/entities.py` were bound directly to `datetime.utcnow`, which is deprecated since Python 3.12.
+
+### How I Investigated
+Observed the 14 pytest warning summaries pointing to `SQLAlchemy/sql/schema.py` line 3624 calling `fn()` where `fn = datetime.utcnow`.
+
+### Solution
+Created a `utc_now()` helper function returning `datetime.now(timezone.utc)` and updated all 6 column defaults and `onupdate` handlers in `entities.py`.
+
+### Why This Solution
+Ensures forward compatibility with Python 3.12, 3.13, and 3.14 without generating deprecation noise during automated testing or server startup.
+
+### Result
+All deprecation warnings eliminated; test suite executes with 0 warnings.
+
+### Lesson Learned
+Always use timezone-aware `datetime.now(timezone.utc)` for ORM timestamps in modern Python.
+
+### Technical Evidence
+File: `backend/app/models/entities.py`. Pytest output: 27 passed, 0 entity warnings.
+
+## Problem 10: Strict Pydantic Literal validation rejected case-variant priority strings from LLM
+
+### Problem
+When testing structured JSON output from Gemini and external clients, responses containing `"priority": "high"` or `"critical"` failed Pydantic validation because `Literal["LOW", "MEDIUM", "HIGH", "CRITICAL"]` performs case-sensitive matching.
+
+### Context
+Occurred when validating simulated LLM outputs against `RecoveryRecommendation`.
+
+### Root Cause
+LLMs often emit lowercase or mixed-case priority strings (`"high"`, `"High"`) unless constrained by strict enum schemas, triggering a Pydantic `ValidationError`.
+
+### How I Investigated
+Observed schema parsing behavior when passing dictionary payloads with lowercase priority strings into `RecoveryRecommendation.from_dict()`.
+
+### Solution
+Added a `@field_validator("priority", mode="before")` pre-processor to `RecoveryRecommendation` that normalizes string input by stripping whitespace and converting to uppercase, defaulting to `"MEDIUM"` if unknown.
+
+### Why This Solution
+Provides resilient schema normalization at the boundary without breaking strict type guarantees for downstream consumers.
+
+### Result
+Both uppercase and lowercase priority strings from LLM providers parse cleanly into valid Pydantic models.
+
+### Lesson Learned
+When designing Pydantic schemas for LLM JSON outputs, use `mode="before"` field validators for case-insensitive normalization of enum-like fields.
+
+### Technical Evidence
+Files: `backend/app/agents/schemas.py`, `backend/tests/test_agent_and_evaluation.py`.
