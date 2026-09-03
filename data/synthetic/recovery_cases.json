@@ -1,0 +1,67 @@
+[
+  {
+    "payment_id": "pay_001",
+    "scenario": "BANK_TIMEOUT",
+    "expected_flow": "FAILED → CONTEXT_ANALYZED → AI_DECISION(RETRY_PAYMENT) → POLICY_CHECK(APPROVED) → ACTION_EXECUTED → RECOVERED",
+    "expected_behavior": "Automatic retry when policy allows; temporary failure resolves on retry"
+  },
+  {
+    "payment_id": "pay_002",
+    "scenario": "INSUFFICIENT_FUNDS",
+    "expected_flow": "FAILED → CONTEXT_ANALYZED → AI_DECISION(SEND_PAYMENT_LINK) → POLICY_CHECK(APPROVED) → ACTION_EXECUTED → PAYMENT_LINK_SENT",
+    "expected_behavior": "Send payment link; do not blindly retry insufficient funds"
+  },
+  {
+    "payment_id": "pay_003",
+    "scenario": "CARD_EXPIRED",
+    "expected_flow": "FAILED → CONTEXT_ANALYZED → AI_DECISION(SUGGEST_ALTERNATE) → POLICY_CHECK(APPROVED) → ACTION_EXECUTED → ALTERNATE_METHOD_SUGGESTED",
+    "expected_behavior": "Suggest alternate payment method since the card is no longer valid"
+  },
+  {
+    "payment_id": "pay_004",
+    "scenario": "NETWORK_ERROR_HIGH_VALUE",
+    "expected_flow": "FAILED → CONTEXT_ANALYZED → AI_DECISION(ESCALATE) → POLICY_CHECK(ESCALATION) → ACTION_EXECUTED → MERCHANT_REVIEW_REQUIRED",
+    "expected_behavior": "Amount exceeds escalation threshold — escalate to merchant review"
+  },
+  {
+    "payment_id": "pay_005",
+    "scenario": "CHECKOUT_ABANDONMENT",
+    "expected_flow": "CHECKOUT_ABANDONED → CONTEXT_ANALYZED → AI_DECISION(SEND_REMINDER) → POLICY_CHECK(APPROVED) → ACTION_EXECUTED → REMINDER_SENT",
+    "expected_behavior": "Send a reminder for abandoned checkout"
+  },
+  {
+    "payment_id": "pay_006",
+    "scenario": "SUCCESSFUL_RECOVERY",
+    "expected_behavior": "Already recovered — represents a past successful recovery"
+  },
+  {
+    "payment_id": "pay_007",
+    "scenario": "REPEATED_FAILURES",
+    "expected_flow": "FAILED → CONTEXT_ANALYZED → AI_DECISION(STOP_RECOVERY) → POLICY_CHECK(STOP) → ACTION_EXECUTED → STOPPED_BY_POLICY",
+    "expected_behavior": "Stop recovery when max retry count or repeated failure limit is reached"
+  },
+  {
+    "payment_id": "pay_008",
+    "scenario": "AUTHENTICATION_FAILURE",
+    "expected_flow": "FAILED → CONTEXT_ANALYZED → AI_DECISION(SEND_REMINDER) → POLICY_CHECK(APPROVED) → ACTION_EXECUTED → REMINDER_SENT",
+    "expected_behavior": "Authentication issues may resolve with customer awareness"
+  },
+  {
+    "payment_id": "pay_016",
+    "scenario": "PAYMENT_EXPIRED",
+    "expected_flow": "FAILED → CONTEXT_ANALYZED → AI_DECISION(SEND_PAYMENT_LINK) → POLICY_CHECK(APPROVED) → ACTION_EXECUTED → PAYMENT_LINK_SENT",
+    "expected_behavior": "Payment link expired; send a fresh link"
+  },
+  {
+    "payment_id": "pay_017",
+    "scenario": "CUSTOMER_CANCELLED",
+    "expected_flow": "FAILED → CONTEXT_ANALYZED → AI_DECISION(SEND_REMINDER) → POLICY_CHECK(APPROVED) → ACTION_EXECUTED → REMINDER_SENT",
+    "expected_behavior": "Customer cancelled voluntarily; a gentle reminder may recover"
+  },
+  {
+    "payment_id": "pay_019",
+    "scenario": "HIGH_VALUE_ESCALATION",
+    "expected_flow": "FAILED → CONTEXT_ANALYZED → AI_DECISION(ESCALATE) → POLICY_CHECK(ESCALATION) → ACTION_EXECUTED → MERCHANT_REVIEW_REQUIRED",
+    "expected_behavior": "₹74,999 transaction exceeds escalation threshold — requires merchant approval"
+  }
+]
