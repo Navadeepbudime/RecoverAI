@@ -19,7 +19,7 @@ Deterministic Merchant Policy Guardrails (`PolicyEngine`)
          ↓
 Action Executor via Payment Provider (`ActionExecutor`)
          ↓
-Immutable Decision Audit Trail (`AuditLog`)
+Append-Only Decision Audit Trail (`AuditLog`)
 ```
 
 ---

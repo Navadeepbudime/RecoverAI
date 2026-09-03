@@ -294,3 +294,61 @@ When designing Pydantic schemas for LLM JSON outputs, use `mode="before"` field 
 
 ### Technical Evidence
 Files: `backend/app/agents/schemas.py`, `backend/tests/test_agent_and_evaluation.py`.
+
+## Problem 11: Windows terminal UnicodeEncodeError with unicode arrow in simulation pipeline trace
+
+### Problem
+When printing live simulation pipeline progress to standard output in a Windows terminal or PowerShell session, Python raised `UnicodeEncodeError: 'charmap' codec can't encode character '\u2192' in position 30: character maps to <undefined>`.
+
+### Context
+Occurred when executing the end-to-end simulation runner script from the terminal.
+
+### Root Cause
+`live_simulator.py` formatted stage 5 execution details with the unicode rightwards arrow character `→` (`\u2192`). Default Windows console encodings (such as `cp1252`) cannot encode non-ASCII characters without explicit UTF-8 reconfiguration.
+
+### How I Investigated
+Inspected traceback pointing to `live_simulator.py` line 196 where the trace detail string was assembled.
+
+### Solution
+Replaced unicode arrow `→` with standard ASCII arrow `->` in `live_simulator.py`.
+
+### Why This Solution
+Guarantees reliable, cross-platform terminal and logger printing across Windows, Linux, and macOS without requiring custom terminal encoding configurations.
+
+### Result
+End-to-end simulation scripts print cleanly to stdout on all platforms without encoding exceptions.
+
+### Lesson Learned
+Avoid non-ASCII symbols in service-level log/detail strings when building cross-platform Python applications that print to standard output.
+
+### Technical Evidence
+File: `backend/app/services/live_simulator.py`.
+
+## Problem 12: PolicyEngine action comparison mismatch between Pydantic Enum and string value
+
+### Problem
+In `PolicyEngine.validate()`, `action == RecoveryAction.RETRY_PAYMENT.value` evaluated to `False` because `recommendation.recommended_action` was a Pydantic `RecoveryAction` enum instance, not a string. This resulted in `PolicyDecision.final_action` holding the Enum instance (`RecoveryAction.RETRY_PAYMENT`) rather than the clean string (`"RETRY_PAYMENT"`), bypassing the `auto_retry_enabled` and `high_value_threshold` guardrail checks for retries.
+
+### Context
+Discovered during end-to-end execution of the bank timeout simulation scenario.
+
+### Root Cause
+`PolicyEngine` was written expecting string actions, while the updated Pydantic schema emits strongly typed `RecoveryAction` enum objects.
+
+### How I Investigated
+Observed string representation `Executed: RecoveryAction.RETRY_PAYMENT` in the pipeline trace and verified with a unit test.
+
+### Solution
+Normalized `action` at the start of `PolicyEngine.validate()` using `getattr(recommendation.recommended_action, "value", str(recommendation.recommended_action))`.
+
+### Why This Solution
+Ensures robust compatibility whether recommendations are passed as Pydantic models or legacy dicts, guaranteeing all policy guardrails execute against standard string values.
+
+### Result
+`PolicyDecision.final_action` consistently produces clean uppercase string action values, and high-value retry guardrails trigger accurately.
+
+### Lesson Learned
+When upgrading agent outputs to Pydantic Enums, ensure downstream policy engines explicitly extract `.value` before performing equality checks against string constants.
+
+### Technical Evidence
+File: `backend/app/policies/engine.py`.

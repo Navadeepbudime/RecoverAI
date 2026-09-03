@@ -193,7 +193,7 @@ def trigger_live_simulation(scenario_key: str, app_config: Dict[str, Any]) -> Di
     pipeline_trace.append({
         "stage": "5. Action Execution",
         "status": "COMPLETED",
-        "detail": f"Executed: {decision.final_action} → Result: {exec_result['outcome']}",
+        "detail": f"Executed: {decision.final_action} -> Result: {exec_result['outcome']}",
     })
 
     db.session.commit()

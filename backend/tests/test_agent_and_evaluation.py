@@ -131,8 +131,26 @@ def test_live_simulation_runs_full_5_stage_pipeline():
 def test_cooldown_and_idempotency_prevents_duplicate_spams():
     app = create_app()
     with app.app_context():
-        case = RecoveryCase.query.filter_by(status="RECOVERED").first()
-        if case:
-            # Process without force should respect cooldown
-            processed = process_case(case, force=False)
-            assert processed.case_id == case.case_id
+        client = app.test_client()
+        # 1. Recovered case must be idempotent (no-op)
+        recovered_case = RecoveryCase.query.filter_by(status="RECOVERED").first()
+        if recovered_case:
+            initial_audits = len(recovered_case.audits)
+            res = client.post(f"/api/cases/{recovered_case.case_id}/process")
+            assert res.status_code == 200
+            db.session.refresh(recovered_case)
+            assert len(recovered_case.audits) == initial_audits  # No duplicate execution logged
+
+        # 2. Rapid double-processing on active case must hit cooldown
+        active_case = RecoveryCase.query.filter_by(status="ACTIVE").first()
+        if active_case:
+            res1 = client.post(f"/api/cases/{active_case.case_id}/process?force=true")
+            assert res1.status_code == 200
+            db.session.refresh(active_case)
+            first_outcome = active_case.outcome
+
+            # Second immediate attempt without force should be intercepted by 120s cooldown
+            res2 = client.post(f"/api/cases/{active_case.case_id}/process")
+            assert res2.status_code == 200
+            db.session.refresh(active_case)
+            assert active_case.outcome == first_outcome

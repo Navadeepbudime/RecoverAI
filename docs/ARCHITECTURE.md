@@ -43,7 +43,7 @@ RecoveryAgent
           ↓
 [Action Executor & Provider] (`services/action_executor.py`)
           ↓
-[Immutable Audit Logger] (`services/audit.py`)
+[Append-Only Audit Logger] (`services/audit.py`)
           ↓
 [Evaluation & ROI Engine] (`services/evaluation.py`)
 ```

@@ -15,7 +15,7 @@ export function Analytics() {
       <div>
         <h2 className="text-xl font-bold tracking-tight">Recovery Performance & ROI Analytics</h2>
         <p className="text-sm text-slate-500">
-          Empirical comparison between naive retries and RecoverAI multi-action orchestration.
+          Simulation-based benchmark comparing naive retries against RecoverAI multi-action orchestration.
         </p>
       </div>
 

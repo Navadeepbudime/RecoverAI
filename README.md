@@ -54,7 +54,7 @@ RecoverAI chooses dynamically among **6 distinct Next-Best-Actions**:
 
 ---
 
-## 📊 Proven Empirical ROI: Baseline vs. RecoverAI
+## 📊 Simulation-Based Benchmark: Baseline vs. RecoverAI
 
 Evaluated over the **identical dataset of 35 payment failure incidents**:
 
@@ -124,7 +124,7 @@ The system strictly enforces separation of concerns. **The AI agent never execut
                                     │
                                     ▼
        ┌─────────────────────────────────────────────────────────┐
-       │   6. Immutable Decision Audit Trail                     │
+       │   6. Structured Decision Audit Trail                    │
        │   - Structured logs: reasoning, policy verdict, outcome │
        └─────────────────────────────────────────────────────────┘
 ```
@@ -198,7 +198,7 @@ RecoverAI/
 ├── docs/
 │   ├── ARCHITECTURE.md               # Detailed architectural blueprint
 │   ├── AI_AGENT.md                   # Agentic workflow & Pydantic schema boundary
-│   ├── BENCHMARKS.md                 # Empirical baseline comparison report
+│   ├── BENCHMARKS.md                 # Simulation-based benchmark report
 │   └── DEMO.md                       # 5-minute live pitch script
 ├── AUDIT_REPORT.md                   # 18-step deep architectural & competitive audit
 ├── PROBLEMS_AND_SOLUTIONS.md         # Real development problems logged with technical evidence

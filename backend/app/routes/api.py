@@ -35,14 +35,18 @@ def get_policy():
 
 def process_case(case, force: bool = False):
     """Processes a recovery case through the complete RecoverAI pipeline."""
-    # Cooldown & idempotency protection: if recently resolved/stopped, prevent accidental double-processing
+    # 1. Idempotency check: If already recovered, no further action is required
+    if not force and case.status == CaseStatus.RECOVERED.value:
+        return case
+
+    # 2. Cooldown check: If recently executed within 120 seconds, avoid duplicate action
     if not force and case.outcome and case.updated_at:
         now_utc = datetime.now(timezone.utc)
         case_time = case.updated_at
         if case_time.tzinfo is None:
             case_time = case_time.replace(tzinfo=timezone.utc)
         elapsed = (now_utc - case_time).total_seconds()
-        if elapsed < 120 and case.status in {CaseStatus.RECOVERED.value, CaseStatus.STOPPED.value}:
+        if elapsed < 120:
             return case
 
     provider = _provider()
@@ -177,7 +181,10 @@ def case_detail(case_id):
 @api_bp.post("/cases/<case_id>/process")
 def process_case_endpoint(case_id):
     case = RecoveryCase.query.filter_by(case_id=case_id).first_or_404()
-    return jsonify(process_case(case, force=True).to_dict(include_detail=True))
+    force = request.args.get("force", "false").lower() == "true"
+    if request.is_json and request.get_json(silent=True):
+        force = force or bool(request.get_json().get("force", False))
+    return jsonify(process_case(case, force=force).to_dict(include_detail=True))
 
 
 # ---------------------------------------------------------------------------

@@ -10,7 +10,7 @@ RecoverAI orchestrates the **Next Best Recovery Action** across 6 distinct inter
 
 ---
 
-## 1. Primary Empirical Benchmark Results
+## 1. Simulation-Based Benchmark Results
 
 | Metric | Naive Retry Baseline | RecoverAI Next-Best-Action | Net Lift / Advantage |
 |---|:---:|:---:|:---:|

@@ -15,7 +15,7 @@ class PolicyDecision:
 
 class PolicyEngine:
     def validate(self, payment, customer, recommendation, policy):
-        action = recommendation.recommended_action
+        action = getattr(recommendation.recommended_action, "value", str(recommendation.recommended_action))
 
         if payment.retry_count >= policy.max_automatic_retries:
             return PolicyDecision(False, RecoveryAction.STOP_RECOVERY.value, "Maximum automatic retry count reached.")

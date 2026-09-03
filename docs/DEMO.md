@@ -49,7 +49,7 @@ Open **http://localhost:5173** in your browser.
 
 ### Minute 2:15 – 3:15: Baseline vs. RecoverAI ROI
 - Scroll to the **Baseline Retry vs. RecoverAI** evaluation card.
-- Show the empirical comparison:
+- Show the simulation-based benchmark comparison:
   - **Naive Retry**: ₹20,554 (11.9% recovery rate).
   - **RecoverAI**: ₹2,20,442 (58.5% recovery rate).
   - **Net Merchant Advantage**: **+₹1,99,888 Incremental Recovery**.
